@@ -52,6 +52,43 @@ curl -s -X POST https://backend.composio.dev/api/v3.1/auth_configs \
 </Tab>
 </Tabs>
 
+### Choose a managed app
+
+Some toolkits have more than one Composio-managed app. Fetch the toolkit to see them: each entry in `composioManagedAuth` (`composio_managed_auth` in Python) has a `managedAppId`, its auth `mode`, the available `scopes`, and an `isDefault` flag. The default app comes first.
+
+Pass `managedAppId` (`managed_app_id` in Python) to pick an app. Leave it out to use the toolkit's default app. The created auth config returns the `managedAppId` it uses.
+
+<Tabs groupId="language" items={['Python', 'TypeScript']} persist>
+<Tab value="Python">
+```python
+toolkit = composio.toolkits.get("slack")
+app = next(a for a in toolkit.composio_managed_auth if not a.is_default)
+
+auth_config = composio.auth_configs.create(
+    "slack",
+    {"type": "use_composio_managed_auth", "managed_app_id": app.managed_app_id},
+)
+```
+</Tab>
+<Tab value="TypeScript">
+```typescript
+import { Composio } from '@composio/core';
+
+const composio = new Composio();
+// ---cut---
+const { composioManagedAuth } = await composio.toolkits.get('slack');
+const app = composioManagedAuth?.find(app => !app.isDefault);
+
+const authConfig = await composio.authConfigs.create('slack', {
+  type: 'use_composio_managed_auth',
+  managedAppId: app?.managedAppId,
+});
+
+console.log(authConfig.managedAppId);
+```
+</Tab>
+</Tabs>
+
 ## Your own OAuth2 credentials
 
 Bring your own OAuth app to show your branding on consent screens, request custom scopes, or get a dedicated rate-limit quota. Register the app in the provider's developer portal, set its authorized redirect URI to Composio's callback, then pass the client ID and secret.
