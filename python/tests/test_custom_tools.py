@@ -864,6 +864,129 @@ class TestBuildMapFromResponse:
 
 
 # ────────────────────────────────────────────────────────────────
+# Keyword-only parameter binding (#4951)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestKeywordOnlyParamBinding:
+    """Regression tests for #4951.
+
+    ``_infer_tool_from_function`` accepts functions with keyword-only
+    parameters when inferring the schema, but the executor calls the function
+    positionally as ``(input, ctx)`` — raising ``TypeError`` for any function
+    that declares a keyword-only parameter. The decorator must preserve the
+    declared parameter kinds when calling the function.
+    """
+
+    def test_kwonly_input_single_param(self):
+        @exp.tool()
+        def search(*, payload: GrepInput):
+            """Search for a pattern."""
+
+            return {"pattern": payload.pattern}
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["pattern"] == "hello"
+
+    def test_positional_input_kwonly_ctx(self):
+        @exp.tool()
+        def search(input: GrepInput, *, ctx):
+            """Search with a keyword-only context."""
+            return {"pattern": input.pattern, "user": ctx.user_id}
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["pattern"] == "hello"
+        assert result["data"]["user"] == "test-user"
+
+    def test_kwonly_input_and_ctx(self):
+        @exp.tool()
+        def search(*, payload: GrepInput, ctx):
+            """Search with keyword-only input and context."""
+            return {"pattern": payload.pattern, "user": ctx.user_id}
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["pattern"] == "hello"
+        assert result["data"]["user"] == "test-user"
+
+    def test_kwonly_input_with_ctx_default(self):
+        @exp.tool()
+        def search(*, payload: GrepInput, ctx=None):
+            """Search with keyword-only input and a defaulted context."""
+            return {"pattern": payload.pattern, "user": ctx.user_id}  # type: ignore
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["user"] == "test-user"
+
+    def test_bare_decorator_kwonly(self):
+        @exp.tool
+        def search(*, payload: GrepInput):
+            """Search for a pattern."""
+
+            return {"pattern": payload.pattern}
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["pattern"] == "hello"
+
+    def test_kwonly_ctx_receives_session_context(self):
+        sentinel = MockSessionContext()
+
+        @exp.tool()
+        def search(input: GrepInput, *, ctx):
+            """Search."""
+
+            return {"same": ctx is sentinel}
+
+        m = build_custom_tools_map([search])
+        entry = find_custom_tool(m, "SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "x"}, sentinel)  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["same"] is True
+
+    def test_direct_custom_tool_execute_kwonly(self):
+        @exp.tool()
+        def search(*, payload: GrepInput):
+            """Search for a pattern."""
+
+            return {"pattern": payload.pattern}
+
+        # Direct execution on the decorated CustomTool (the issue's repro path)
+        result = search.execute(GrepInput(pattern="hello"), None)  # type: ignore
+        assert result == {"pattern": "hello"}
+
+    def test_experimental_toolkit_kwonly(self):
+        tk = ExperimentalToolkit(
+            slug="SEARCHER", name="Searcher", description="Search toolkit"
+        )
+
+        @tk.tool()
+        def search(*, payload: GrepInput):
+            """Search for a pattern."""
+
+            return {"pattern": payload.pattern}
+
+        m = build_custom_tools_map([], [tk])
+        entry = find_custom_tool(m, "LOCAL_SEARCHER_SEARCH")
+        result = execute_custom_tool(entry, {"pattern": "hello"}, MockSessionContext())  # type: ignore
+        assert result["successful"] is True
+        assert result["data"]["pattern"] == "hello"
+
+
+# ────────────────────────────────────────────────────────────────
 # Execution tests
 # ────────────────────────────────────────────────────────────────
 

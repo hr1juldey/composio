@@ -408,13 +408,32 @@ def _infer_tool_from_function(
         )
     input_params: t.Type[BaseModel] = first_annotation
 
-    # Wrap function to match CustomToolExecuteFn: (input, ctx) -> dict
-    if len(params) == 1:
+    # Wrap function to match CustomToolExecuteFn: (input, ctx) -> dict.
+    # Bind by declared parameter kinds, not position: a function may declare
+    # keyword-only parameters (e.g. ``def search(*, payload: Input, ctx)``),
+    # and calling it positionally raises TypeError even though schema
+    # inference accepted it (#4951). Positional signatures keep positional
+    # binding, so existing behavior is unchanged.
+    input_name = first.name
+    input_keyword_only = first.kind is inspect.Parameter.KEYWORD_ONLY
+    ctx_param = params[1] if len(params) == 2 else None
+    ctx_keyword_only = (
+        ctx_param is not None and ctx_param.kind is inspect.Parameter.KEYWORD_ONLY
+    )
 
-        def execute(input: t.Any, ctx: t.Any) -> t.Dict[str, t.Any]:
-            return fn(input)
-    else:
-        execute = fn
+    def execute(input: t.Any, ctx: t.Any) -> t.Dict[str, t.Any]:
+        args: t.List[t.Any] = []
+        kwargs: t.Dict[str, t.Any] = {}
+        if input_keyword_only:
+            kwargs[input_name] = input
+        else:
+            args.append(input)
+        if ctx_param is not None:
+            if ctx_keyword_only:
+                kwargs[ctx_param.name] = ctx
+            else:
+                args.append(ctx)
+        return fn(*args, **kwargs)
 
     return _create_tool(
         slug=actual_slug,
