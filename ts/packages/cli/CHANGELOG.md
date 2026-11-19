@@ -4,6 +4,8 @@
 
 ### Patch Changes
 
+- `composio execute`, `composio proxy`, and `composio listen` no longer hang when stdin is a pipe that never sends anything or closes, as some agent harnesses leave it. Without `-d`, they read piped stdin as before, but a pipe that stays silent for 1 second now counts as no input, with a warning on stderr, instead of blocking the command with no output and no timeout. Pass `-d -` to wait for stdin as long as it takes.
+
 - Update @composio/client to 2.1.35 to include the latest API changes.
 
 - `composio upgrade` on Windows now retries a busy executable rename for up to two seconds, allowing a brief file lock after a previous upgrade to clear before replacing the binary.
